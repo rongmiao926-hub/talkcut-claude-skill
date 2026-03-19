@@ -26,12 +26,12 @@ pos: 前置 skill，首次使用前运行
 
 ## 依赖清单
 
-| 依赖 | 用途 | 安装命令 |
-|------|------|----------|
-| Node.js | 运行脚本 | `brew install node` |
-| FFmpeg | 视频剪辑 | `brew install ffmpeg` |
-| curl | API 调用 | 系统自带 |
-| mlx-whisper | 本地语音转录（可选） | `pip3 install mlx-whisper` |
+| 依赖 | 用途 | macOS | Windows |
+|------|------|-------|---------|
+| Node.js | 运行脚本 | `brew install node` | `winget install OpenJS.NodeJS` 或 [官网下载](https://nodejs.org) |
+| FFmpeg | 视频剪辑 | `brew install ffmpeg` | `winget install Gyan.FFmpeg` 或 [手动下载](https://www.gyan.dev/ffmpeg/builds/) |
+| curl | API 调用 | 系统自带 | 系统自带（Win10+） |
+| mlx-whisper | 本地语音转录（可选） | `pip3 install mlx-whisper` | 不支持（仅 Apple Silicon） |
 
 ## 转录方案
 
@@ -79,11 +79,30 @@ VOLCENGINE_API_KEY=your_api_key_here
 
 ### 1. 安装依赖
 
-```bash
-# macOS
-brew install node ffmpeg
+#### macOS
 
-# 验证
+```bash
+brew install node ffmpeg
+```
+
+#### Windows
+
+```bash
+# 方式一：winget（推荐）
+winget install OpenJS.NodeJS
+winget install Gyan.FFmpeg
+
+# 方式二：手动安装
+# Node.js → https://nodejs.org 下载安装包
+# FFmpeg → https://www.gyan.dev/ffmpeg/builds/ 下载 release full 版本
+#   解压后将 bin 目录添加到系统 PATH 环境变量
+```
+
+> 如果在沙盒环境（如 Trae）中包管理器被限制，请使用手动安装方式。
+
+#### 验证
+
+```bash
 node -v
 ffmpeg -version
 ```

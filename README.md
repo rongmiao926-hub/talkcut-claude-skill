@@ -46,6 +46,10 @@ git clone https://github.com/amiaoo/talkcut-claude-skill.git ~/.claude/skills/vi
 
 Claude 会自动帮你安装需要的工具（Node.js、FFmpeg）。
 
+> **Windows 用户注意**：如果你的 AI 工具有沙盒限制（如 Trae），自动安装可能会失败。这时需要手动安装：
+> - **Node.js**：去 https://nodejs.org 下载安装包
+> - **FFmpeg**：去 https://www.gyan.dev/ffmpeg/builds/ 下载 release full 版本，解压后将 `bin` 目录添加到系统 PATH 环境变量
+
 ### 第 3 步：选择语音转录方案
 
 安装过程中，Claude 会问你用哪种语音识别方案。两个选择：
