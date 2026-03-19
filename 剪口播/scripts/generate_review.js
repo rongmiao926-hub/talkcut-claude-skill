@@ -41,134 +41,232 @@ const html = `<!DOCTYPE html>
   <title>审核稿</title>
   <script src="https://unpkg.com/wavesurfer.js@7"></script>
   <style>
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-      max-width: 900px;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+      max-width: 960px;
       margin: 0 auto;
-      padding: 20px;
-      background: #1a1a1a;
-      color: #e0e0e0;
+      padding: 24px 20px 100px;
+      background: #f8f9fa;
+      color: #1a1a1a;
+      -webkit-user-select: none;
+      user-select: none;
     }
-    h1 { text-align: center; margin-bottom: 20px; }
 
-    .controls {
+    /* ── 顶部播放器区域 ── */
+    .player {
       position: sticky;
       top: 0;
-      background: #1a1a1a;
-      padding: 15px 0;
-      border-bottom: 1px solid #333;
+      background: #f8f9fa;
+      padding: 16px 0 12px;
       z-index: 100;
+      border-bottom: 1px solid #e0e0e0;
     }
-
-    .buttons {
+    .player-row {
       display: flex;
-      gap: 10px;
       align-items: center;
-      flex-wrap: wrap;
-      margin-bottom: 15px;
+      gap: 12px;
+      margin-bottom: 12px;
     }
-
-    button {
-      padding: 8px 16px;
-      background: #4CAF50;
-      color: white;
+    .btn {
+      padding: 7px 14px;
       border: none;
-      border-radius: 4px;
+      border-radius: 6px;
       cursor: pointer;
-      font-size: 14px;
+      font-size: 13px;
+      font-weight: 500;
+      transition: opacity .15s;
     }
-    button:hover { background: #45a049; }
-    button.danger { background: #f44336; }
-    button.danger:hover { background: #da190b; }
+    .btn:hover { opacity: .85; }
+    .btn-play { background: #2563eb; color: #fff; }
+    .btn-cut  { background: #111; color: #fff; }
+    .btn-clear {
+      background: #fff;
+      color: #999;
+      border: 1px solid #d0d0d0;
+      font-size: 12px;
+      padding: 5px 12px;
+    }
+    .btn-clear:hover { color: #dc2626; border-color: #fca5a5; }
 
     select {
-      padding: 8px 12px;
-      background: #333;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      font-size: 14px;
+      padding: 7px 10px;
+      background: #fff;
+      color: #333;
+      border: 1px solid #d0d0d0;
+      border-radius: 6px;
+      font-size: 13px;
       cursor: pointer;
     }
-    select:hover { background: #444; }
-
-    #time {
-      font-family: monospace;
-      font-size: 16px;
-      color: #888;
+    .time-display {
+      margin-left: auto;
+      font-family: "SF Mono", Menlo, monospace;
+      font-size: 14px;
+      color: #999;
+      margin-right: 4px;
     }
-
     #waveform {
-      background: #252525;
-      border-radius: 4px;
-      margin: 10px 0;
+      background: #fff;
+      border-radius: 8px;
+      border: 1px solid #e0e0e0;
+      overflow: hidden;
     }
 
+    /* ── 操作说明 ── */
+    .help-section {
+      margin-top: 14px;
+      padding: 14px 16px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #555;
+      line-height: 1.8;
+    }
+    .help-section .help-title {
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 6px;
+    }
+    .help-section ul {
+      list-style: none;
+      padding: 0;
+    }
+    .help-section li {
+      padding: 2px 0;
+    }
+    .help-section li::before {
+      content: "·";
+      margin-right: 8px;
+      color: #aaa;
+    }
+    .help-section kbd {
+      display: inline-block;
+      padding: 1px 6px;
+      background: #f3f4f6;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      font-family: "SF Mono", Menlo, monospace;
+      font-size: 12px;
+      color: #555;
+    }
+
+    /* ── 统计栏 ── */
+    .stats-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      margin-top: 8px;
+      font-size: 13px;
+      color: #888;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .legend {
+      display: flex;
+      gap: 14px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+    }
+
+    /* ── 正文区 ── */
     .content {
-      line-height: 2.5;
-      padding: 20px 0;
+      line-height: 2.6;
+      padding: 16px 0;
     }
 
     .word {
       display: inline-block;
-      padding: 4px 2px;
-      margin: 2px;
+      padding: 3px 2px;
+      margin: 1px;
       border-radius: 3px;
       cursor: pointer;
-      transition: all 0.15s;
+      transition: background .1s, color .1s;
+      position: relative;
     }
+    .word:hover { background: #e8e8e8; }
+    .word.current { background: #2563eb; color: #fff; }
 
-    .word:hover { background: #333; }
-    .word.current { background: #2196F3; color: white; }
-    .word.selected { background: #f44336; color: white; text-decoration: line-through; }
-    .word.ai-selected { background: #ff9800; color: white; }
-    .word.ai-selected.selected { background: #f44336; }
+    /* AI 预选但用户取消了：只留淡底色提示，表示"AI 曾标记" */
+    .word.ai-origin { background: #fefce8; color: #a16207; border-bottom: 1.5px dashed #e5be2b; }
+    .word.ai-origin:hover { background: #fef9c3; }
+
+    /* 手动确认删除：红色删除线 */
+    .word.selected { background: #fee2e2; color: #991b1b; text-decoration: line-through; }
+
+    /* AI 预选 + 已确认删除：明显橙色 + 删除线 */
+    .word.ai-origin.selected { background: #fef3c7; color: #92400e; text-decoration: line-through; border-bottom: none; }
+
+    /* 拖动时临时高亮 */
+    .word.drag-preview { outline: 2px solid #f59e0b; outline-offset: -1px; }
 
     .gap {
       display: inline-block;
-      background: #333;
-      color: #888;
-      padding: 4px 8px;
-      margin: 2px;
-      border-radius: 3px;
-      font-size: 12px;
-      cursor: pointer;
-    }
-    .gap:hover { background: #444; }
-    .gap.selected { background: #f44336; color: white; }
-    .gap.ai-selected { background: #ff9800; color: white; }
-    .gap.ai-selected.selected { background: #f44336; }
-
-    .stats {
-      margin-top: 10px;
-      padding: 10px;
-      background: #252525;
-      border-radius: 4px;
-      font-size: 14px;
-    }
-
-    .help {
-      font-size: 13px;
+      background: #f0f0f0;
       color: #999;
-      margin-top: 10px;
-      background: #252525;
-      padding: 12px;
-      border-radius: 6px;
-      line-height: 1.8;
+      padding: 3px 7px;
+      margin: 1px;
+      border-radius: 3px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: background .1s;
     }
-    .help b { color: #fff; }
-    .help div { margin: 2px 0; }
+    .gap:hover { background: #e0e0e0; }
+    .gap.ai-origin { background: #fefce8; color: #a16207; border-bottom: 1.5px dashed #e5be2b; }
+    .gap.selected { background: #fee2e2; color: #991b1b; }
+    .gap.ai-origin.selected { background: #fef3c7; color: #92400e; text-decoration: line-through; border-bottom: none; }
+    .gap.drag-preview { outline: 2px solid #f59e0b; outline-offset: -1px; }
 
-    /* Loading 遮罩 */
+    /* ── 底部操作栏 ── */
+    .bottom-bar {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid #e5e7eb;
+    }
+    .bottom-bar-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .btn-copy {
+      background: #e5e7eb;
+      color: #555;
+      font-size: 12px;
+      padding: 6px 12px;
+    }
+    .btn-copy:hover { background: #d1d5db; }
+    .copy-hint {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #9ca3af;
+      line-height: 1.6;
+    }
+
+    /* ── 页脚署名 ── */
+    .footer-credit {
+      margin-top: 32px;
+      padding-top: 14px;
+      border-top: 1px solid #e5e7eb;
+      font-size: 11px;
+      color: #b0b0b0;
+      line-height: 1.7;
+      text-align: center;
+    }
+
+    /* ── Loading 遮罩 ── */
     .loading-overlay {
       display: none;
       position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0,0,0,0.85);
+      inset: 0;
+      background: rgba(255,255,255,0.92);
       z-index: 9999;
       justify-content: center;
       align-items: center;
@@ -176,62 +274,43 @@ const html = `<!DOCTYPE html>
     }
     .loading-overlay.show { display: flex; }
     .loading-spinner {
-      width: 60px;
-      height: 60px;
-      border: 4px solid #333;
-      border-top-color: #9C27B0;
+      width: 48px; height: 48px;
+      border: 3px solid #e5e7eb;
+      border-top-color: #7c3aed;
       border-radius: 50%;
-      animation: spin 1s linear infinite;
+      animation: spin .8s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .loading-text {
-      margin-top: 20px;
-      font-size: 18px;
-      color: #fff;
-    }
+    .loading-text { margin-top: 18px; font-size: 16px; color: #333; }
     .loading-progress-container {
-      margin-top: 20px;
-      width: 300px;
-      height: 8px;
-      background: #333;
-      border-radius: 4px;
-      overflow: hidden;
+      margin-top: 16px; width: 260px; height: 6px;
+      background: #e5e7eb; border-radius: 3px; overflow: hidden;
     }
     .loading-progress-bar {
       height: 100%;
-      background: linear-gradient(90deg, #9C27B0, #E91E63);
-      width: 0%;
-      transition: width 0.3s ease;
+      background: linear-gradient(90deg, #7c3aed, #ec4899);
+      width: 0%; transition: width .3s;
     }
-    .loading-time {
-      margin-top: 15px;
-      font-size: 14px;
-      color: #888;
-    }
-    .loading-estimate {
-      margin-top: 8px;
-      font-size: 13px;
-      color: #666;
-    }
+    .loading-time { margin-top: 12px; font-size: 13px; color: #666; }
+    .loading-estimate { margin-top: 6px; font-size: 12px; color: #999; }
   </style>
 </head>
 <body>
   <!-- Loading 遮罩 -->
   <div class="loading-overlay" id="loadingOverlay">
     <div class="loading-spinner"></div>
-    <div class="loading-text">🎬 正在剪辑中...</div>
+    <div class="loading-text">正在剪辑...</div>
     <div class="loading-progress-container">
       <div class="loading-progress-bar" id="loadingProgress"></div>
     </div>
     <div class="loading-time" id="loadingTime">已等待 0 秒</div>
-    <div class="loading-estimate" id="loadingEstimate">预估剩余: 计算中...</div>
+    <div class="loading-estimate" id="loadingEstimate"></div>
   </div>
 
-  <h1>审核稿</h1>
-
-  <div class="controls">
-    <div class="buttons">
-      <button onclick="wavesurfer.playPause()">▶️ 播放/暂停</button>
+  <!-- 顶部播放器 -->
+  <div class="player">
+    <div class="player-row">
+      <button class="btn btn-play" onclick="wavesurfer.playPause()">播放 / 暂停</button>
       <select id="speed" onchange="wavesurfer.setPlaybackRate(parseFloat(this.value))">
         <option value="0.5">0.5x</option>
         <option value="0.75">0.75x</option>
@@ -240,34 +319,61 @@ const html = `<!DOCTYPE html>
         <option value="1.5">1.5x</option>
         <option value="2">2x</option>
       </select>
-      <button onclick="copyDeleteList()">📋 复制删除列表</button>
-      <button onclick="executeCut()" style="background:#9C27B0">🎬 执行剪辑</button>
-      <button class="danger" onclick="clearAll()">🗑️ 清空选择</button>
-      <span id="time">00:00 / 00:00</span>
+      <span class="time-display" id="time">00:00 / 00:00</span>
+      <button class="btn btn-cut" onclick="executeCut()">执行剪辑</button>
     </div>
     <div id="waveform"></div>
-    <div class="help">
-      <div><b>🖱️ 鼠标：</b>单击 = 跳转播放 | 双击 = 选中/取消 | Shift+拖动 = 批量选中/取消</div>
-      <div><b>⌨️ 键盘：</b>空格 = 播放/暂停 | ← → = 跳转1秒 | Shift+←→ = 跳转5秒</div>
-      <div><b>🎨 颜色：</b><span style="color:#ff9800">橙色</span> = AI预选 | <span style="color:#f44336">红色删除线</span> = 已确认删除 | 播放时自动跳过选中片段</div>
+    <div class="help-section">
+      <div class="help-title">操作说明</div>
+      <ul>
+        <li><strong>单击</strong>文字：跳转到该位置播放</li>
+        <li><strong>拖动</strong>鼠标：框选一段文字，松开后批量选中（再次拖动已选中的区域可取消）</li>
+        <li><strong>双击</strong>文字：选中或取消单个字</li>
+        <li>键盘快捷键：<kbd>空格</kbd> 播放/暂停，<kbd>←</kbd><kbd>→</kbd> 前后跳 1 秒，<kbd>Shift</kbd>+方向键跳 5 秒</li>
+        <li>播放时会自动跳过已选中（标记删除）的片段，方便预览剪辑后的效果</li>
+      </ul>
     </div>
   </div>
 
+  <!-- 统计 + 图例 + 清空 -->
+  <div class="stats-bar">
+    <span id="stats">已选择 0 个，共 0.00s</span>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#fef3c7; border: 1px solid #e5be2b"></div>AI 预选（待删除）</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fefce8; border: 1px dashed #e5be2b"></div>AI 预选（手动保留）</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#fee2e2; border: 1px solid #fca5a5"></div>手动选中</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#2563eb"></div>正在播放</div>
+    </div>
+    <button class="btn btn-clear" onclick="clearAll()">清空选择</button>
+  </div>
+
+  <!-- 正文 -->
   <div class="content" id="content"></div>
-  <div class="stats" id="stats"></div>
+
+  <!-- 底部操作 -->
+  <div class="bottom-bar">
+    <div class="bottom-bar-row">
+      <button class="btn btn-copy" onclick="copyDeleteList()">复制删除列表 (JSON)</button>
+    </div>
+    <div class="copy-hint">💡 复制后发送给你的 AI 助手，它可以从中学习你的剪辑偏好，下次自动标记得更准。</div>
+  </div>
+
+  <!-- 页脚署名 -->
+  <div class="footer-credit">
+    原作：成峰（公众号「AI 产品自由」） · 当前版本由 Dogtor 大王（小红书）完善
+  </div>
 
   <script>
     const words = ${JSON.stringify(words)};
     const autoSelected = new Set(${JSON.stringify(autoSelected)});
     const selected = new Set(autoSelected);
 
-    // 初始化 wavesurfer
     const wavesurfer = WaveSurfer.create({
       container: '#waveform',
-      waveColor: '#4a9eff',
-      progressColor: '#1976D2',
-      cursorColor: '#fff',
-      height: 80,
+      waveColor: '#c4c9d4',
+      progressColor: '#2563eb',
+      cursorColor: '#f59e0b',
+      height: 64,
       barWidth: 2,
       barGap: 1,
       barRadius: 2,
@@ -278,29 +384,38 @@ const html = `<!DOCTYPE html>
     const content = document.getElementById('content');
     const statsDiv = document.getElementById('stats');
     let elements = [];
-    let isSelecting = false;
-    let selectStart = -1;
-    let selectMode = 'add'; // 'add' or 'remove'
 
-    // 格式化时间 (用于播放器显示)
+    // ── 拖动选择状态 ──
+    let isDragging = false;
+    let dragStartIdx = -1;
+    let dragMode = 'add';
+    let dragMoved = false;
+    let dragPreviewSet = new Set();
+
     function formatTime(sec) {
       const m = Math.floor(sec / 60);
       const s = Math.floor(sec % 60);
       return \`\${m.toString().padStart(2, '0')}:\${s.toString().padStart(2, '0')}\`;
     }
 
-    // 格式化时长 (用于剪辑结果显示，带秒数)
     function formatDuration(sec) {
       const totalSec = parseFloat(sec);
       const m = Math.floor(totalSec / 60);
       const s = (totalSec % 60).toFixed(1);
-      if (m > 0) {
-        return \`\${m}分\${s}秒 (\${totalSec}s)\`;
-      }
-      return \`\${s}秒\`;
+      return m > 0 ? \`\${m}分\${s}秒 (\${totalSec}s)\` : \`\${s}秒\`;
     }
 
-    // 渲染内容
+    function applyClass(el, i) {
+      el.classList.remove('selected', 'ai-origin', 'drag-preview');
+      if (selected.has(i)) {
+        el.classList.add('selected');
+        if (autoSelected.has(i)) el.classList.add('ai-origin');
+      } else if (autoSelected.has(i)) {
+        el.classList.add('ai-origin');
+      }
+    }
+
+    // ── 渲染 ──
     function render() {
       content.innerHTML = '';
       elements = [];
@@ -308,38 +423,25 @@ const html = `<!DOCTYPE html>
       words.forEach((word, i) => {
         const div = document.createElement('div');
         div.className = word.isGap ? 'gap' : 'word';
-
-        if (selected.has(i)) div.classList.add('selected');
-        else if (autoSelected.has(i)) div.classList.add('ai-selected');
+        applyClass(div, i);
 
         if (word.isGap) {
           const duration = (word.end - word.start).toFixed(1);
-          div.textContent = \`⏸ \${duration}s\`;
+          div.textContent = \`\${duration}s\`;
         } else {
           div.textContent = word.text;
         }
-
         div.dataset.index = i;
 
-        // 单击跳转播放
-        div.onclick = (e) => {
-          if (!isSelecting) {
-            wavesurfer.setTime(word.start);
-          }
-        };
-
-        // 双击选中/取消
-        div.ondblclick = () => toggle(i);
-
-        // Shift+拖动选择/取消
-        div.onmousedown = (e) => {
-          if (e.shiftKey) {
-            isSelecting = true;
-            selectStart = i;
-            selectMode = selected.has(i) ? 'remove' : 'add';
-            e.preventDefault();
-          }
-        };
+        // 鼠标按下：开始拖动
+        div.addEventListener('mousedown', e => {
+          isDragging = true;
+          dragMoved = false;
+          dragStartIdx = i;
+          dragMode = selected.has(i) ? 'remove' : 'add';
+          clearDragPreview();
+          e.preventDefault();
+        });
 
         content.appendChild(div);
         elements.push(div);
@@ -348,90 +450,100 @@ const html = `<!DOCTYPE html>
       updateStats();
     }
 
-    // Shift+拖动多选/取消
+    function clearDragPreview() {
+      dragPreviewSet.forEach(j => {
+        if (elements[j]) elements[j].classList.remove('drag-preview');
+      });
+      dragPreviewSet.clear();
+    }
+
+    // ── 拖动中：实时显示高亮预览 ──
     content.addEventListener('mousemove', e => {
-      if (!isSelecting) return;
+      if (!isDragging) return;
       const target = e.target.closest('[data-index]');
       if (!target) return;
 
       const i = parseInt(target.dataset.index);
-      const min = Math.min(selectStart, i);
-      const max = Math.max(selectStart, i);
+      if (i !== dragStartIdx) dragMoved = true;
 
+      clearDragPreview();
+
+      const min = Math.min(dragStartIdx, i);
+      const max = Math.max(dragStartIdx, i);
       for (let j = min; j <= max; j++) {
-        if (selectMode === 'add') {
-          selected.add(j);
-          elements[j].classList.add('selected');
-          elements[j].classList.remove('ai-selected');
-        } else {
-          selected.delete(j);
-          elements[j].classList.remove('selected');
-          if (autoSelected.has(j)) elements[j].classList.add('ai-selected');
-        }
+        elements[j].classList.add('drag-preview');
+        dragPreviewSet.add(j);
       }
-      updateStats();
     });
 
-    document.addEventListener('mouseup', () => {
-      isSelecting = false;
-    });
+    // ── 鼠标松开：执行选择或单击跳转 ──
+    document.addEventListener('mouseup', e => {
+      if (!isDragging) return;
 
-    function toggle(i) {
-      if (selected.has(i)) {
-        selected.delete(i);
-        elements[i].classList.remove('selected');
-        if (autoSelected.has(i)) elements[i].classList.add('ai-selected');
+      const target = e.target.closest('[data-index]');
+      const endIdx = target ? parseInt(target.dataset.index) : dragStartIdx;
+
+      clearDragPreview();
+
+      if (!dragMoved) {
+        // 没有移动 = 单击 → 跳转播放
+        wavesurfer.setTime(words[dragStartIdx].start);
       } else {
-        selected.add(i);
-        elements[i].classList.add('selected');
-        elements[i].classList.remove('ai-selected');
+        // 有移动 = 拖动 → 批量选中/取消
+        const min = Math.min(dragStartIdx, endIdx);
+        const max = Math.max(dragStartIdx, endIdx);
+        for (let j = min; j <= max; j++) {
+          if (dragMode === 'add') selected.add(j);
+          else selected.delete(j);
+          applyClass(elements[j], j);
+        }
+        updateStats();
       }
+
+      isDragging = false;
+      dragStartIdx = -1;
+    });
+
+    // 双击选中/取消
+    content.addEventListener('dblclick', e => {
+      const target = e.target.closest('[data-index]');
+      if (!target) return;
+      const i = parseInt(target.dataset.index);
+      if (selected.has(i)) selected.delete(i);
+      else selected.add(i);
+      applyClass(elements[i], i);
       updateStats();
-    }
+    });
 
     function updateStats() {
-      const count = selected.size;
       let totalDuration = 0;
-      selected.forEach(i => {
-        totalDuration += words[i].end - words[i].start;
-      });
-      statsDiv.textContent = \`已选择 \${count} 个元素，总时长 \${totalDuration.toFixed(2)}s\`;
+      selected.forEach(i => { totalDuration += words[i].end - words[i].start; });
+      statsDiv.textContent = \`已选择 \${selected.size} 个，共 \${totalDuration.toFixed(2)}s\`;
     }
 
-    // 时间更新 & 高亮当前词 & 跳过选中片段
+    // ── 播放跟踪 ──
     wavesurfer.on('timeupdate', (t) => {
-      // 播放时跳过选中片段（找到连续选中的末尾）
       if (wavesurfer.isPlaying()) {
-        const sortedSelected = Array.from(selected).sort((a, b) => a - b);
-        for (const i of sortedSelected) {
+        const sorted = Array.from(selected).sort((a, b) => a - b);
+        for (const i of sorted) {
           const w = words[i];
           if (t >= w.start && t < w.end) {
-            // 找到连续选中片段的末尾
             let endTime = w.end;
-            let j = sortedSelected.indexOf(i) + 1;
-            while (j < sortedSelected.length) {
-              const nextIdx = sortedSelected[j];
-              const nextW = words[nextIdx];
-              // 如果下一个紧挨着（间隔<0.1s），继续跳
-              if (nextW.start - endTime < 0.1) {
-                endTime = nextW.end;
-                j++;
-              } else {
-                break;
-              }
+            let j = sorted.indexOf(i) + 1;
+            while (j < sorted.length) {
+              const nw = words[sorted[j]];
+              if (nw.start - endTime < 0.1) { endTime = nw.end; j++; }
+              else break;
             }
             wavesurfer.setTime(endTime);
             return;
           }
         }
       }
-
       timeDisplay.textContent = \`\${formatTime(t)} / \${formatTime(wavesurfer.getDuration())}\`;
-
-      // 高亮当前词
       elements.forEach((el, i) => {
-        const word = words[i];
-        if (t >= word.start && t < word.end) {
+        const w = words[i];
+        if (t >= w.start && t < w.end) {
           if (!el.classList.contains('current')) {
             el.classList.add('current');
             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -444,63 +556,44 @@ const html = `<!DOCTYPE html>
 
     function copyDeleteList() {
       const segments = [];
-      const sortedSelected = Array.from(selected).sort((a, b) => a - b);
-
-      sortedSelected.forEach(i => {
-        const word = words[i];
-        segments.push({ start: word.start, end: word.end });
+      Array.from(selected).sort((a, b) => a - b).forEach(i => {
+        segments.push({ start: words[i].start, end: words[i].end });
       });
-
-      // 合并相邻片段
       const merged = [];
       for (const seg of segments) {
-        if (merged.length === 0) {
-          merged.push({ ...seg });
-        } else {
+        if (merged.length === 0) merged.push({ ...seg });
+        else {
           const last = merged[merged.length - 1];
-          if (Math.abs(seg.start - last.end) < 0.05) {
-            last.end = seg.end;
-          } else {
-            merged.push({ ...seg });
-          }
+          if (Math.abs(seg.start - last.end) < 0.05) last.end = seg.end;
+          else merged.push({ ...seg });
         }
       }
-
-      const json = JSON.stringify(merged, null, 2);
-      navigator.clipboard.writeText(json).then(() => {
-        alert('已复制 ' + merged.length + ' 个删除片段到剪贴板');
+      navigator.clipboard.writeText(JSON.stringify(merged, null, 2)).then(() => {
+        alert('已复制 ' + merged.length + ' 个删除片段');
       });
     }
 
     function clearAll() {
       selected.clear();
-      elements.forEach((el, i) => {
-        el.classList.remove('selected');
-        if (autoSelected.has(i)) el.classList.add('ai-selected');
-      });
+      elements.forEach((el, i) => applyClass(el, i));
       updateStats();
     }
 
     async function executeCut() {
-      // 基于视频时长预估剪辑时间
       const videoDuration = wavesurfer.getDuration();
       const videoMinutes = (videoDuration / 60).toFixed(1);
-      const estimatedTime = Math.max(5, Math.ceil(videoDuration / 4)); // 经验值：约4倍速处理
-      const estMin = Math.floor(estimatedTime / 60);
-      const estSec = estimatedTime % 60;
-      const estText = estMin > 0 ? \`\${estMin}分\${estSec}秒\` : \`\${estSec}秒\`;
+      const estimatedTime = Math.max(5, Math.ceil(videoDuration / 4));
+      const estText = estimatedTime >= 60
+        ? \`\${Math.floor(estimatedTime/60)}分\${estimatedTime%60}秒\`
+        : \`\${estimatedTime}秒\`;
 
-      if (!confirm(\`确认执行剪辑？\\n\\n📹 视频时长: \${videoMinutes} 分钟\\n⏱️ 预计耗时: \${estText}\\n\\n点击确定开始\`)) return;
+      if (!confirm(\`确认执行剪辑？\\n\\n视频时长: \${videoMinutes} 分钟\\n预计耗时: \${estText}\`)) return;
 
-      // 直接发送原始时间戳，不做合并（和预览一致）
       const segments = [];
-      const sortedSelected = Array.from(selected).sort((a, b) => a - b);
-      sortedSelected.forEach(i => {
-        const word = words[i];
-        segments.push({ start: word.start, end: word.end });
+      Array.from(selected).sort((a, b) => a - b).forEach(i => {
+        segments.push({ start: words[i].start, end: words[i].end });
       });
 
-      // 显示 loading 并开始计时
       const overlay = document.getElementById('loadingOverlay');
       const loadingTimeEl = document.getElementById('loadingTime');
       const loadingProgress = document.getElementById('loadingProgress');
@@ -512,67 +605,42 @@ const html = `<!DOCTYPE html>
       const timer = setInterval(() => {
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         loadingTimeEl.textContent = \`已等待 \${elapsed} 秒\`;
-
-        // 更新进度条（预估进度，最多到95%等待完成）
-        const progress = Math.min(95, (elapsed / estimatedTime) * 100);
-        loadingProgress.style.width = progress + '%';
-
-        // 更新预估剩余时间
+        loadingProgress.style.width = Math.min(95, (elapsed / estimatedTime) * 100) + '%';
         const remaining = Math.max(0, estimatedTime - elapsed);
-        if (remaining > 0) {
-          loadingEstimate.textContent = \`预估剩余: \${remaining} 秒\`;
-        } else {
-          loadingEstimate.textContent = \`即将完成...\`;
-        }
+        loadingEstimate.textContent = remaining > 0 ? \`预估剩余: \${remaining} 秒\` : \`即将完成...\`;
       }, 500);
 
       try {
         const res = await fetch('/api/cut', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(segments)  // 直接发原始数据
+          body: JSON.stringify(segments)
         });
         const data = await res.json();
-
-        // 停止计时并隐藏 loading
         clearInterval(timer);
         loadingProgress.style.width = '100%';
-        await new Promise(r => setTimeout(r, 300)); // 让进度条动画完成
+        await new Promise(r => setTimeout(r, 300));
         overlay.classList.remove('show');
-        loadingProgress.style.width = '0%'; // 重置
+        loadingProgress.style.width = '0%';
         const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
 
         if (data.success) {
-          const msg = \`✅ 剪辑完成！(耗时 \${totalTime}s)
-
-📁 输出文件: \${data.output}
-
-⏱️ 时间统计:
-   原时长: \${formatDuration(data.originalDuration)}
-   新时长: \${formatDuration(data.newDuration)}
-   删减: \${formatDuration(data.deletedDuration)} (\${data.savedPercent}%)\`;
-          alert(msg);
+          alert(\`剪辑完成 (耗时 \${totalTime}s)\\n\\n输出: \${data.output}\\n原时长: \${formatDuration(data.originalDuration)}\\n新时长: \${formatDuration(data.newDuration)}\\n删减: \${formatDuration(data.deletedDuration)} (\${data.savedPercent}%)\`);
         } else {
-          alert('❌ 剪辑失败: ' + data.error);
+          alert('剪辑失败: ' + data.error);
         }
       } catch (err) {
         clearInterval(timer);
         overlay.classList.remove('show');
-        loadingProgress.style.width = '0%'; // 重置
-        alert('❌ 请求失败: ' + err.message + '\\n\\n请确保使用 review_server.js 启动服务');
+        loadingProgress.style.width = '0%';
+        alert('请求失败: ' + err.message + '\\n\\n请确保使用 review_server.js 启动服务');
       }
     }
 
-    // 键盘快捷键
     document.addEventListener('keydown', e => {
-      if (e.code === 'Space') {
-        e.preventDefault();
-        wavesurfer.playPause();
-      } else if (e.code === 'ArrowLeft') {
-        wavesurfer.setTime(Math.max(0, wavesurfer.getCurrentTime() - (e.shiftKey ? 5 : 1)));
-      } else if (e.code === 'ArrowRight') {
-        wavesurfer.setTime(wavesurfer.getCurrentTime() + (e.shiftKey ? 5 : 1));
-      }
+      if (e.code === 'Space') { e.preventDefault(); wavesurfer.playPause(); }
+      else if (e.code === 'ArrowLeft') { wavesurfer.setTime(Math.max(0, wavesurfer.getCurrentTime() - (e.shiftKey ? 5 : 1))); }
+      else if (e.code === 'ArrowRight') { wavesurfer.setTime(wavesurfer.getCurrentTime() + (e.shiftKey ? 5 : 1)); }
     });
 
     render();

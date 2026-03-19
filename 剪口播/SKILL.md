@@ -15,7 +15,7 @@ pos: 转录+识别，到用户网页审核为止
 
 # 剪口播 v2
 
-> 火山引擎转录 + AI 口误识别 + 网页审核
+> 语音转录 + AI 口误识别 + 网页审核
 
 ## 快速使用
 
@@ -27,12 +27,12 @@ pos: 转录+识别，到用户网页审核为止
 ## 输出目录结构
 
 ```
-output/
+{DEFAULT_OUTPUT_DIR}/
 └── YYYY-MM-DD_视频名/
     ├── 剪口播/
     │   ├── 1_转录/
     │   │   ├── audio.mp3
-    │   │   ├── volcengine_result.json
+    │   │   ├── volcengine_result.json  (仅火山引擎方案)
     │   │   └── subtitles_words.json
     │   ├── 2_分析/
     │   │   ├── readable.txt
@@ -53,17 +53,17 @@ output/
     ↓
 1. 提取音频 (ffmpeg)
     ↓
-2. 上传获取公网 URL (uguu.se)
+2. 选择转录方案（读取 .env 的 ASR_ENGINE）
+    ├─ volcengine: 上传 → 火山引擎 API → generate_subtitles.js
+    └─ whisper:    本地 whisper_transcribe.py
     ↓
-3. 火山引擎 API 转录
+3. 得到 subtitles_words.json（两条路径汇合）
     ↓
-4. 生成字级别字幕 (subtitles_words.json)
+4. AI 分析口误/静音，生成预选列表 (auto_selected.json)
     ↓
-5. AI 分析口误/静音，生成预选列表 (auto_selected.json)
+5. 生成审核网页 (review.html)
     ↓
-6. 生成审核网页 (review.html)
-    ↓
-7. 启动审核服务器，用户网页确认
+6. 启动审核服务器，用户网页确认
     ↓
 【等待用户确认】→ 网页点击「执行剪辑」或手动 /剪辑
 ```
@@ -73,47 +73,85 @@ output/
 ### 步骤 0: 创建输出目录
 
 ```bash
+# 读取 .env 中的 DEFAULT_OUTPUT_DIR
+SKILL_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+ENV_FILE="$SKILL_ROOT/.env"
+OUTPUT_ROOT=$(grep DEFAULT_OUTPUT_DIR "$ENV_FILE" | cut -d'=' -f2)
+```
+
+**如果 `DEFAULT_OUTPUT_DIR` 为空（首次使用）**：
+1. 询问用户希望将输出文件存放到哪个目录
+2. 将用户回答的路径写入 `.env` 的 `DEFAULT_OUTPUT_DIR=` 行
+3. 如果用户没有特别要求，使用视频文件所在目录的 `output/` 子目录
+
+```bash
 # 变量设置（根据实际视频调整）
 VIDEO_PATH="/path/to/视频.mp4"
 VIDEO_NAME=$(basename "$VIDEO_PATH" .mp4)
 DATE=$(date +%Y-%m-%d)
-BASE_DIR="output/${DATE}_${VIDEO_NAME}/剪口播"
+BASE_DIR="${OUTPUT_ROOT}/${DATE}_${VIDEO_NAME}/剪口播"
 
 # 创建子目录
 mkdir -p "$BASE_DIR/1_转录" "$BASE_DIR/2_分析" "$BASE_DIR/3_审核"
 cd "$BASE_DIR"
 ```
 
-### 步骤 1-3: 转录
+### 步骤 1: 提取音频
 
 ```bash
 cd 1_转录
 
-# 1. 提取音频（文件名有冒号需加 file: 前缀）
+# 提取音频（文件名有冒号需加 file: 前缀）
 ffmpeg -i "file:$VIDEO_PATH" -vn -acodec libmp3lame -y audio.mp3
+```
 
-# 2. 上传获取公网 URL
+### 步骤 2: 转录（分支）
+
+读取 `.env` 中的 `ASR_ENGINE`：
+- 如果为空 → 询问用户选择转录方案
+- `volcengine` → 方案 A
+- `whisper` → 方案 B
+
+#### 方案 A：火山引擎 API
+
+```bash
+# 1. 上传获取公网 URL
 curl -s -F "files[]=@audio.mp3" https://uguu.se/upload
 # 返回: {"success":true,"files":[{"url":"https://h.uguu.se/xxx.mp3"}]}
 
-# 3. 调用火山引擎 API
-SKILL_DIR="/Users/chengfeng/Desktop/AIos/剪辑Agent/.claude/skills/剪口播"
+# 2. 调用火山引擎 API
 "$SKILL_DIR/scripts/volcengine_transcribe.sh" "https://h.uguu.se/xxx.mp3"
 # 输出: volcengine_result.json
-```
 
-### 步骤 4: 生成字幕
-
-```bash
+# 3. 生成字级别字幕
 node "$SKILL_DIR/scripts/generate_subtitles.js" volcengine_result.json
 # 输出: subtitles_words.json
+```
 
+#### 方案 B：Whisper 本地模型
+
+先检查 mlx-whisper 是否已安装，未安装则自动安装：
+
+```bash
+python3 -c "import mlx_whisper" 2>/dev/null || pip3 install mlx-whisper
+```
+
+执行转录（首次运行会自动下载模型，约 1.5GB）：
+
+```bash
+python3 "$SKILL_DIR/scripts/whisper_transcribe.py" audio.mp3
+# 直接输出: subtitles_words.json（已包含 gap 检测，无需再调 generate_subtitles.js）
+```
+
+```bash
 cd ..
 ```
 
-### 步骤 5: 分析口误（脚本+AI）
+→ 两条路径都输出 `subtitles_words.json`，后续步骤完全一致。
 
-#### 5.1 生成易读格式
+### 步骤 3: 分析口误（脚本+AI）
+
+#### 3.1 生成易读格式
 
 ```bash
 cd 2_分析
@@ -133,11 +171,11 @@ require('fs').writeFileSync('readable.txt', output.join('\\n'));
 "
 ```
 
-#### 5.2 读取用户习惯
+#### 3.2 读取用户习惯
 
 先读 `用户习惯/` 目录下所有规则文件。
 
-#### 5.3 生成句子列表（关键步骤）
+#### 3.3 生成句子列表（关键步骤）
 
 **必须先分句，再分析**。按静音切分成句子列表：
 
@@ -166,7 +204,7 @@ sentences.forEach((s, i) => {
 " > sentences.txt
 ```
 
-#### 5.4 脚本自动标记静音（必须先执行）
+#### 3.4 脚本自动标记静音（必须先执行）
 
 ```bash
 node -e "
@@ -182,7 +220,7 @@ console.log('≥0.5s静音数量:', selected.length);
 
 → 输出 `auto_selected.json`（只含静音 idx）
 
-#### 5.5 AI 分析口误（追加到 auto_selected.json）
+#### 3.5 AI 分析口误（追加到 auto_selected.json）
 
 **检测规则（按优先级）**：
 
@@ -229,7 +267,7 @@ readable.txt 格式: idx|内容|时间
 | 65-75 | 15.80-17.66 | 重复句 | "这是我剪出来的一个案例" | 删 |
 ```
 
-### 步骤 6-7: 审核
+### 步骤 4-5: 审核
 
 ```bash
 cd ../3_审核
@@ -271,10 +309,18 @@ node "$SKILL_DIR/scripts/review_server.js" 8899 "$VIDEO_PATH"
 
 ## 配置
 
-### 火山引擎 API Key
+### .env 字段
 
 ```bash
-cd /Users/chengfeng/Desktop/AIos/剪辑Agent/.claude/skills
-cp .env.example .env
+VOLCENGINE_API_KEY=xxx    # 火山引擎 API Key（方案 A 需要）
+DEFAULT_OUTPUT_DIR=xxx    # 默认输出目录
+ASR_ENGINE=               # 转录方案: volcengine / whisper，留空每次询问
+```
+
+### 火山引擎 API Key
+
+获取指南：https://my.feishu.cn/wiki/Gh0MwxHePidsYfkIx7zcvJQynqc?from=from_copylink
+
+```bash
 # 编辑 .env 填入 VOLCENGINE_API_KEY=xxx
 ```
