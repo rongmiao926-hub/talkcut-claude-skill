@@ -124,7 +124,7 @@ Claude 会自动：
 
 2. **输入命令**：
    ```bash
-   git clone https://github.com/amiaoo/talkcut-claude-skill.git ~/.claude/skills/videocut
+   git clone https://github.com/rongmiao926-hub/talkcut-claude-skill.git ~/.claude/skills/videocut
    ```
 
 3. **等待完成**：
