@@ -101,7 +101,7 @@ https://my.feishu.cn/wiki/J1YcwUDXkiYxw2kjcDXcMScJnQe?from=from_copylink
 **告诉 Claude：**
 
 ```
-请用 Git 克隆 talkcut-claude-skill 仓库到 ~/.claude/skills/videocut
+请用 Git 克隆 https://github.com/rongmiao926-hub/talkcut-claude-skill.git 仓库到 ~/.claude/skills/videocut
 ```
 
 Claude 会自动：
