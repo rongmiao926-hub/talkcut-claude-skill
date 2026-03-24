@@ -23,34 +23,42 @@ if (audioFile !== audioBaseName && fs.existsSync(audioFile)) {
   console.log('📁 已复制音频到当前目录:', audioBaseName);
 }
 
-let reviewAudioBaseName = audioBaseName;
-if (audioBaseName.endsWith('.wav') && fs.existsSync(audioBaseName)) {
-  const reviewPreviewName = 'audio_preview.m4a';
-  const sourceMtime = fs.statSync(audioBaseName).mtimeMs;
-  const previewExists = fs.existsSync(reviewPreviewName);
-  const previewIsFresh = previewExists && fs.statSync(reviewPreviewName).mtimeMs >= sourceMtime;
-
-  if (!previewIsFresh) {
-    try {
-      execSync(
-        `ffmpeg -y -i "${audioBaseName}" -c:a aac -b:a 192k "${reviewPreviewName}"`,
-        { stdio: 'pipe' }
-      );
-      console.log('🎧 已生成审核预览音频:', reviewPreviewName);
-    } catch (err) {
-      console.warn('⚠️ 生成审核预览音频失败，将回退到原始音频播放');
-    }
-  }
-
-  if (fs.existsSync(reviewPreviewName)) {
-    reviewAudioBaseName = reviewPreviewName;
-  }
-}
+// 审核时优先直接播放提取出来的原始 WAV，避免为了前端预览再做一层有损 AAC 压缩。
+const reviewAudioBaseName = audioBaseName;
+let previewAudioBaseName = reviewAudioBaseName;
+let previewAudioOffsetSec = 0;
 
 const timelineMetadataSource = path.join(path.dirname(audioFile), 'audio_timeline.json');
 if (fs.existsSync(timelineMetadataSource)) {
   fs.copyFileSync(timelineMetadataSource, 'audio_timeline.json');
   console.log('📁 已复制时间轴元数据到当前目录: audio_timeline.json');
+
+  try {
+    const timelineMetadata = JSON.parse(fs.readFileSync(timelineMetadataSource, 'utf8'));
+    const sourceVideo = String(timelineMetadata.sourceVideo || '').trim();
+    const sourceAudioStartSec = Number(timelineMetadata.sourceAudioStartSec);
+    const previewSourceName = 'audio_source.wav';
+
+    if (sourceVideo && Number.isFinite(sourceAudioStartSec) && fs.existsSync(sourceVideo)) {
+      const previewIsFresh = fs.existsSync(previewSourceName)
+        && fs.statSync(previewSourceName).mtimeMs >= fs.statSync(sourceVideo).mtimeMs;
+
+      if (!previewIsFresh) {
+        execSync(
+          `ffmpeg -y -i "${sourceVideo}" -map 0:a:0 -c:a pcm_s16le "${previewSourceName}"`,
+          { stdio: 'pipe' }
+        );
+        console.log('🎧 已生成源音轨预览音频:', previewSourceName);
+      }
+
+      if (fs.existsSync(previewSourceName)) {
+        previewAudioBaseName = previewSourceName;
+        previewAudioOffsetSec = sourceAudioStartSec;
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️ 解析时间轴元数据或生成源音轨预览失败，将回退到对齐审核音频播放');
+  }
 }
 
 if (!fs.existsSync(subtitlesFile)) {
@@ -146,6 +154,10 @@ const html = `<!DOCTYPE html>
       font-size: 14px;
       color: #999;
       margin-right: 4px;
+    }
+    .native-audio {
+      width: 100%;
+      margin: 10px 0 0;
     }
     #waveform {
       background: #fff;
@@ -448,6 +460,7 @@ const html = `<!DOCTYPE html>
       <span class="time-display" id="time">00:00 / 00:00</span>
       <button class="btn btn-cut" onclick="executeCut()">执行剪辑</button>
     </div>
+    <audio id="nativeAudio" class="native-audio" controls preload="metadata" src="${previewAudioBaseName}"></audio>
     <div id="waveform"></div>
     <div class="help-section">
       <div class="help-title">操作说明</div>
@@ -456,7 +469,7 @@ const html = `<!DOCTYPE html>
         <li><strong>拖动</strong>鼠标：框选一段文字，松开后批量选中（再次拖动已选中的区域可取消）</li>
         <li><strong>双击</strong>文字：选中或取消单个字</li>
         <li>键盘快捷键：<kbd>空格</kbd> 播放/暂停，<kbd>←</kbd><kbd>→</kbd> 前后跳 1 秒，<kbd>Shift</kbd>+方向键跳 5 秒</li>
-        <li>播放时会自动跳过已选中（标记删除）的片段，方便预览剪辑后的效果</li>
+        <li>默认使用源视频主音轨做试听，WaveSurfer 只负责波形和定位</li>
       </ul>
     </div>
   </div>
@@ -518,9 +531,13 @@ const html = `<!DOCTYPE html>
     const words = ${JSON.stringify(words)};
     const autoSelected = new Set(${JSON.stringify(autoSelected)});
     const selected = new Set(autoSelected);
+    const nativeAudio = document.getElementById('nativeAudio');
+    const previewAudioOffsetSec = ${JSON.stringify(previewAudioOffsetSec)};
 
     const wavesurfer = WaveSurfer.create({
       container: '#waveform',
+      backend: 'MediaElement',
+      media: nativeAudio,
       waveColor: '#c4c9d4',
       progressColor: '#2563eb',
       cursorColor: '#f59e0b',
@@ -528,7 +545,6 @@ const html = `<!DOCTYPE html>
       barWidth: 2,
       barGap: 1,
       barRadius: 2,
-      url: '${reviewAudioBaseName}'
     });
 
     const timeDisplay = document.getElementById('time');
@@ -548,6 +564,14 @@ const html = `<!DOCTYPE html>
     let dragMoved = false;
     let dragPreviewSet = new Set();
     let suppressAutoScrollUntil = 0;
+
+    function timelineToPreviewTime(sec) {
+      return Math.max(0, sec - previewAudioOffsetSec);
+    }
+
+    function previewToTimelineTime(sec) {
+      return sec + previewAudioOffsetSec;
+    }
 
     function formatTime(sec) {
       const m = Math.floor(sec / 60);
@@ -649,7 +673,7 @@ const html = `<!DOCTYPE html>
       if (!dragMoved) {
         // 没有移动 = 单击 → 跳转播放
         suppressAutoScroll();
-        wavesurfer.setTime(words[dragStartIdx].start);
+        wavesurfer.setTime(timelineToPreviewTime(words[dragStartIdx].start));
       } else {
         // 有移动 = 拖动 → 批量选中/取消
         const min = Math.min(dragStartIdx, endIdx);
@@ -685,26 +709,10 @@ const html = `<!DOCTYPE html>
     }
 
     // ── 播放跟踪 ──
-    wavesurfer.on('timeupdate', (t) => {
+    wavesurfer.on('timeupdate', (rawTime) => {
+      const t = previewToTimelineTime(rawTime);
       const allowAutoScroll = wavesurfer.isPlaying() && Date.now() >= suppressAutoScrollUntil;
-      if (wavesurfer.isPlaying()) {
-        const sorted = Array.from(selected).sort((a, b) => a - b);
-        for (const i of sorted) {
-          const w = words[i];
-          if (t >= w.start && t < w.end) {
-            let endTime = w.end;
-            let j = sorted.indexOf(i) + 1;
-            while (j < sorted.length) {
-              const nw = words[sorted[j]];
-              if (nw.start - endTime < 0.1) { endTime = nw.end; j++; }
-              else break;
-            }
-            wavesurfer.setTime(endTime);
-            return;
-          }
-        }
-      }
-      timeDisplay.textContent = \`\${formatTime(t)} / \${formatTime(wavesurfer.getDuration())}\`;
+      timeDisplay.textContent = \`\${formatTime(t)} / \${formatTime(previewToTimelineTime(wavesurfer.getDuration()))}\`;
       elements.forEach((el, i) => {
         const w = words[i];
         if (t >= w.start && t < w.end) {
@@ -814,7 +822,7 @@ const html = `<!DOCTYPE html>
     }
 
     async function executeCut() {
-      const videoDuration = wavesurfer.getDuration();
+      const videoDuration = previewToTimelineTime(wavesurfer.getDuration());
       const videoMinutes = (videoDuration / 60).toFixed(1);
       const estimatedTime = Math.max(5, Math.ceil(videoDuration / 4));
       const estText = estimatedTime >= 60
