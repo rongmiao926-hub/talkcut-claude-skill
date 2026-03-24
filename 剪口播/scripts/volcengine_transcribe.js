@@ -27,8 +27,17 @@ if (!fs.existsSync(ENV_FILE)) {
 }
 
 const envContent = fs.readFileSync(ENV_FILE, 'utf8');
-const apiKeyMatch = envContent.match(/VOLCENGINE_API_KEY=(.+)/);
-const API_KEY = apiKeyMatch ? apiKeyMatch[1].trim() : '';
+const envConfig = {};
+for (const rawLine of envContent.split('\n')) {
+  const line = rawLine.trim();
+  if (!line || line.startsWith('#')) continue;
+  const idx = line.indexOf('=');
+  if (idx === -1) continue;
+  const key = line.slice(0, idx).trim();
+  const value = line.slice(idx + 1).replace(/\s+#.*$/, '').trim();
+  envConfig[key] = value;
+}
+const API_KEY = envConfig.VOLCENGINE_API_KEY || '';
 
 if (!API_KEY) {
   console.error('❌ .env 中未找到 VOLCENGINE_API_KEY');

@@ -3,21 +3,54 @@
  * 生成审核网页（wavesurfer.js 版本）
  *
  * 用法: node generate_review.js <subtitles_words.json> [auto_selected.json] [audio_file]
- * 输出: review.html, audio.mp3（复制到当前目录）
+ * 输出: review.html, audio.*（复制到当前目录）
  */
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
+const { normalizeSelectedIndices } = require('./auto_selected_utils');
 
 const subtitlesFile = process.argv[2] || 'subtitles_words.json';
 const autoSelectedFile = process.argv[3] || 'auto_selected.json';
-const audioFile = process.argv[4] || 'audio.mp3';
+const audioFile = process.argv[4] || 'audio.wav';
 
 // 复制音频文件到当前目录（避免相对路径问题）
-const audioBaseName = 'audio.mp3';
+const inputAudioExt = path.extname(audioFile) || '.wav';
+const audioBaseName = `audio${inputAudioExt}`;
 if (audioFile !== audioBaseName && fs.existsSync(audioFile)) {
   fs.copyFileSync(audioFile, audioBaseName);
   console.log('📁 已复制音频到当前目录:', audioBaseName);
+}
+
+let reviewAudioBaseName = audioBaseName;
+if (audioBaseName.endsWith('.wav') && fs.existsSync(audioBaseName)) {
+  const reviewPreviewName = 'audio_preview.m4a';
+  const sourceMtime = fs.statSync(audioBaseName).mtimeMs;
+  const previewExists = fs.existsSync(reviewPreviewName);
+  const previewIsFresh = previewExists && fs.statSync(reviewPreviewName).mtimeMs >= sourceMtime;
+
+  if (!previewIsFresh) {
+    try {
+      execSync(
+        `ffmpeg -y -i "${audioBaseName}" -c:a aac -b:a 192k "${reviewPreviewName}"`,
+        { stdio: 'pipe' }
+      );
+      console.log('🎧 已生成审核预览音频:', reviewPreviewName);
+    } catch (err) {
+      console.warn('⚠️ 生成审核预览音频失败，将回退到原始音频播放');
+    }
+  }
+
+  if (fs.existsSync(reviewPreviewName)) {
+    reviewAudioBaseName = reviewPreviewName;
+  }
+}
+
+const timelineMetadataSource = path.join(path.dirname(audioFile), 'audio_timeline.json');
+if (fs.existsSync(timelineMetadataSource)) {
+  fs.copyFileSync(timelineMetadataSource, 'audio_timeline.json');
+  console.log('📁 已复制时间轴元数据到当前目录: audio_timeline.json');
 }
 
 if (!fs.existsSync(subtitlesFile)) {
@@ -29,8 +62,13 @@ const words = JSON.parse(fs.readFileSync(subtitlesFile, 'utf8'));
 let autoSelected = [];
 
 if (fs.existsSync(autoSelectedFile)) {
-  autoSelected = JSON.parse(fs.readFileSync(autoSelectedFile, 'utf8'));
+  const rawAutoSelected = JSON.parse(fs.readFileSync(autoSelectedFile, 'utf8'));
+  const normalized = normalizeSelectedIndices(words, rawAutoSelected);
+  autoSelected = normalized.indices;
   console.log('AI 预选:', autoSelected.length, '个元素');
+  if (normalized.addedBridgeGaps > 0) {
+    console.log('🔗 已补充夹在删除段之间的短停顿:', normalized.addedBridgeGaps, '个');
+  }
 }
 
 const html = `<!DOCTYPE html>
@@ -51,6 +89,10 @@ const html = `<!DOCTYPE html>
       color: #1a1a1a;
       -webkit-user-select: none;
       user-select: none;
+    }
+    textarea, input {
+      -webkit-user-select: text;
+      user-select: text;
     }
 
     /* ── 顶部播放器区域 ── */
@@ -249,58 +291,89 @@ const html = `<!DOCTYPE html>
       color: #9ca3af;
       line-height: 1.6;
     }
-
     .show-notes-panel {
-      margin-top: 24px;
+      margin-top: 18px;
+      padding: 18px;
       background: #fff;
       border: 1px solid #e5e7eb;
       border-radius: 12px;
-      padding: 18px 18px 16px;
     }
     .show-notes-header {
       display: flex;
-      align-items: center;
       justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 10px;
+      align-items: flex-start;
+      gap: 16px;
     }
     .show-notes-title {
-      font-size: 15px;
+      font-size: 16px;
       font-weight: 600;
       color: #111827;
     }
     .show-notes-subtitle {
       margin-top: 4px;
-      font-size: 12px;
+      font-size: 13px;
       color: #6b7280;
-      line-height: 1.5;
+      line-height: 1.6;
     }
     .show-notes-actions {
       display: flex;
-      align-items: center;
-      gap: 8px;
+      gap: 10px;
+      flex-wrap: wrap;
     }
     .show-notes-status {
-      font-size: 12px;
+      margin-top: 12px;
+      min-height: 20px;
+      font-size: 13px;
       color: #6b7280;
-      margin-bottom: 10px;
-      line-height: 1.6;
     }
     .show-notes-output {
       width: 100%;
-      min-height: 220px;
+      min-height: 240px;
+      margin-top: 12px;
+      padding: 14px;
       border: 1px solid #d1d5db;
       border-radius: 10px;
-      padding: 14px;
-      font: 13px/1.7 "SF Mono", Menlo, monospace;
-      color: #111827;
-      background: #f9fafb;
+      background: #fffbeb;
+      color: #374151;
+      font-size: 14px;
+      line-height: 1.8;
       resize: vertical;
     }
     .show-notes-output:focus {
-      outline: none;
-      border-color: #93c5fd;
-      box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.25);
+      outline: 2px solid #fdba74;
+      border-color: #fb923c;
+    }
+    .output-dir-panel {
+      margin-top: 16px;
+      padding: 14px 16px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+    }
+    .output-dir-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .output-dir-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #111827;
+    }
+    .output-dir-value {
+      margin-top: 6px;
+      font-family: "SF Mono", Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.7;
+      color: #374151;
+      word-break: break-all;
+    }
+    .output-dir-status {
+      margin-top: 6px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #6b7280;
     }
 
     /* ── 页脚署名 ── */
@@ -388,6 +461,17 @@ const html = `<!DOCTYPE html>
     </div>
   </div>
 
+  <div class="output-dir-panel">
+    <div class="output-dir-header">
+      <div>
+        <div class="output-dir-title">本次成片输出目录</div>
+        <div class="output-dir-value" id="outputDirValue">正在读取...</div>
+        <div class="output-dir-status" id="outputDirStatus">页面会自动读取当前实际输出目录。</div>
+      </div>
+      <button class="btn btn-copy" onclick="copyOutputDir()">复制目录</button>
+    </div>
+  </div>
+
   <!-- 统计 + 图例 + 清空 -->
   <div class="stats-bar">
     <span id="stats">已选择 0 个，共 0.00s</span>
@@ -415,7 +499,7 @@ const html = `<!DOCTYPE html>
     <div class="show-notes-header">
       <div>
         <div class="show-notes-title">视频介绍草稿</div>
-        <div class="show-notes-subtitle">这部分内容由 Claude 在主流程里生成，这里只负责查看和复制。</div>
+        <div class="show-notes-subtitle">这部分内容由 Codex 在主流程里生成，这里只负责查看和复制。</div>
       </div>
       <div class="show-notes-actions">
         <button class="btn btn-copy" onclick="copyShowNotes()">复制视频介绍</button>
@@ -444,7 +528,7 @@ const html = `<!DOCTYPE html>
       barWidth: 2,
       barGap: 1,
       barRadius: 2,
-      url: '${audioBaseName}'
+      url: '${reviewAudioBaseName}'
     });
 
     const timeDisplay = document.getElementById('time');
@@ -452,7 +536,10 @@ const html = `<!DOCTYPE html>
     const statsDiv = document.getElementById('stats');
     const showNotesStatus = document.getElementById('showNotesStatus');
     const showNotesOutput = document.getElementById('showNotesOutput');
+    const outputDirValue = document.getElementById('outputDirValue');
+    const outputDirStatus = document.getElementById('outputDirStatus');
     let elements = [];
+    let runtimeInfo = null;
 
     // ── 拖动选择状态 ──
     let isDragging = false;
@@ -460,6 +547,7 @@ const html = `<!DOCTYPE html>
     let dragMode = 'add';
     let dragMoved = false;
     let dragPreviewSet = new Set();
+    let suppressAutoScrollUntil = 0;
 
     function formatTime(sec) {
       const m = Math.floor(sec / 60);
@@ -472,6 +560,10 @@ const html = `<!DOCTYPE html>
       const m = Math.floor(totalSec / 60);
       const s = (totalSec % 60).toFixed(1);
       return m > 0 ? \`\${m}分\${s}秒 (\${totalSec}s)\` : \`\${s}秒\`;
+    }
+
+    function suppressAutoScroll(ms = 350) {
+      suppressAutoScrollUntil = Date.now() + ms;
     }
 
     function applyClass(el, i) {
@@ -556,6 +648,7 @@ const html = `<!DOCTYPE html>
 
       if (!dragMoved) {
         // 没有移动 = 单击 → 跳转播放
+        suppressAutoScroll();
         wavesurfer.setTime(words[dragStartIdx].start);
       } else {
         // 有移动 = 拖动 → 批量选中/取消
@@ -577,6 +670,7 @@ const html = `<!DOCTYPE html>
     content.addEventListener('dblclick', e => {
       const target = e.target.closest('[data-index]');
       if (!target) return;
+      suppressAutoScroll();
       const i = parseInt(target.dataset.index);
       if (selected.has(i)) selected.delete(i);
       else selected.add(i);
@@ -592,6 +686,7 @@ const html = `<!DOCTYPE html>
 
     // ── 播放跟踪 ──
     wavesurfer.on('timeupdate', (t) => {
+      const allowAutoScroll = wavesurfer.isPlaying() && Date.now() >= suppressAutoScrollUntil;
       if (wavesurfer.isPlaying()) {
         const sorted = Array.from(selected).sort((a, b) => a - b);
         for (const i of sorted) {
@@ -615,7 +710,9 @@ const html = `<!DOCTYPE html>
         if (t >= w.start && t < w.end) {
           if (!el.classList.contains('current')) {
             el.classList.add('current');
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (allowAutoScroll) {
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
           }
         } else {
           el.classList.remove('current');
@@ -630,11 +727,16 @@ const html = `<!DOCTYPE html>
       });
     }
 
+    function getSelectedIndices() {
+      return Array.from(selected).sort((a, b) => a - b);
+    }
+
     function getMergedSelectedSegments() {
       const segments = [];
-      Array.from(selected).sort((a, b) => a - b).forEach(i => {
+      getSelectedIndices().forEach(i => {
         segments.push({ start: words[i].start, end: words[i].end });
       });
+
       const merged = [];
       for (const seg of segments) {
         if (merged.length === 0) merged.push({ ...seg });
@@ -651,6 +753,36 @@ const html = `<!DOCTYPE html>
       selected.clear();
       elements.forEach((el, i) => applyClass(el, i));
       updateStats();
+    }
+
+    async function loadRuntimeInfo() {
+      outputDirStatus.textContent = '正在读取当前实际输出目录...';
+      try {
+        const res = await fetch('/api/runtime-info');
+        const data = await res.json();
+        if (!data.success) {
+          throw new Error('输出目录读取失败');
+        }
+        runtimeInfo = data;
+        outputDirValue.textContent = data.cutOutputDir;
+        outputDirStatus.textContent = data.outputSourceText;
+      } catch (err) {
+        outputDirValue.textContent = '当前无法读取';
+        outputDirStatus.textContent = err.message;
+      }
+    }
+
+    function copyOutputDir() {
+      const text = runtimeInfo?.cutOutputDir || outputDirValue.textContent.trim();
+      if (!text || text === '当前无法读取') {
+        alert('当前还没有可复制的输出目录');
+        return;
+      }
+      navigator.clipboard.writeText(text).then(() => {
+        outputDirStatus.textContent = '输出目录已复制到剪贴板';
+      }).catch(err => {
+        outputDirStatus.textContent = '复制失败：' + err.message;
+      });
     }
 
     async function loadShowNotes() {
@@ -724,7 +856,7 @@ const html = `<!DOCTYPE html>
         const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
 
         if (data.success) {
-          alert(\`剪辑完成 (耗时 \${totalTime}s)\\n\\n输出: \${data.output}\\n原时长: \${formatDuration(data.originalDuration)}\\n新时长: \${formatDuration(data.newDuration)}\\n删减: \${formatDuration(data.deletedDuration)} (\${data.savedPercent}%)\`);
+          alert(\`剪辑完成 (耗时 \${totalTime}s)\\n\\n输出目录: \${data.outputDir}\\n输出文件: \${data.output}\\n原时长: \${formatDuration(data.originalDuration)}\\n新时长: \${formatDuration(data.newDuration)}\\n删减: \${formatDuration(data.deletedDuration)} (\${data.savedPercent}%)\`);
         } else {
           alert('剪辑失败: ' + data.error);
         }
@@ -743,6 +875,7 @@ const html = `<!DOCTYPE html>
     });
 
     render();
+    loadRuntimeInfo();
     loadShowNotes();
   </script>
 </body>
@@ -750,5 +883,4 @@ const html = `<!DOCTYPE html>
 
 fs.writeFileSync('review.html', html);
 console.log('✅ 已生成 review.html');
-console.log('📌 启动服务器: python3 -m http.server 8899');
-console.log('📌 打开: http://localhost:8899/review.html');
+console.log('📌 请使用 review_server.js 启动审核服务，否则剪辑和正文读写功能不可用');

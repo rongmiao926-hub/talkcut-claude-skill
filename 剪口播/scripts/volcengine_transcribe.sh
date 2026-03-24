@@ -23,7 +23,7 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
-API_KEY=$(grep VOLCENGINE_API_KEY "$ENV_FILE" | cut -d'=' -f2)
+API_KEY=$(grep '^VOLCENGINE_API_KEY=' "$ENV_FILE" | tail -n 1 | cut -d'=' -f2- | sed 's/[[:space:]]#.*$//' | xargs)
 
 echo "🎤 提交火山引擎转录任务..."
 echo "音频 URL: $AUDIO_URL"

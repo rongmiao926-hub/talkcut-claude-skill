@@ -35,14 +35,17 @@ pos: 转录+识别，到用户网页审核为止
 └── YYYY-MM-DD_视频名/
     ├── 剪口播/
     │   ├── 1_转录/
-    │   │   ├── audio.mp3
+    │   │   ├── audio.wav
+    │   │   ├── audio_timeline.json
     │   │   ├── volcengine_result.json  (仅火山引擎方案)
     │   │   └── subtitles_words.json
     │   ├── 2_分析/
     │   │   ├── readable.txt
+    │   │   ├── sentences.txt
     │   │   ├── auto_selected.json
     │   │   └── 口误分析.md
     │   └── 3_审核/
+    │       ├── audio_preview.m4a
     │       ├── review.html
     │       └── 视频介绍草稿.md
     └── 字幕/
@@ -56,7 +59,7 @@ pos: 转录+识别，到用户网页审核为止
 ```
 0. 创建输出目录
     ↓
-1. 提取音频 (ffmpeg)
+1. 提取和视频时间轴对齐的审核音频
     ↓
 2. 选择转录方案（读取 .env 的 ASR_ENGINE）
     ├─ volcengine: 上传 → 火山引擎 API → generate_subtitles.js
@@ -65,6 +68,8 @@ pos: 转录+识别，到用户网页审核为止
 3. 得到 subtitles_words.json（两条路径汇合）
     ↓
 4. AI 分析口误/静音，生成预选列表 (auto_selected.json)
+    ↓
+4.2 规范化预选列表（补短停顿桥接）
     ↓
 4.5 生成视频介绍草稿 (视频介绍草稿.md)
     ↓
@@ -108,9 +113,14 @@ cd "$BASE_DIR"
 ```bash
 cd 1_转录
 
-# 提取音频（文件名有冒号需加 file: 前缀）
-ffmpeg -i "file:$VIDEO_PATH" -vn -acodec libmp3lame -y audio.mp3
+# 提取和视频时间轴对齐的审核音频，并写出时间轴元数据
+node "$SKILL_DIR/scripts/extract_review_audio.js" "$VIDEO_PATH" audio.wav audio_timeline.json
 ```
+
+说明：
+
+- 后续 Whisper 转录和审核页都基于这份 `audio.wav`
+- `audio_timeline.json` 用来把审核页时间轴和源视频时间轴对齐，避免不同视频的音频起点差异导致切点偏移
 
 ### 步骤 2: 转录（分支）
 
@@ -122,15 +132,18 @@ ffmpeg -i "file:$VIDEO_PATH" -vn -acodec libmp3lame -y audio.mp3
 #### 方案 A：火山引擎 API
 
 ```bash
-# 1. 上传获取公网 URL
+# 1. 转成便于上传的 mp3
+ffmpeg -y -i audio.wav -c:a libmp3lame audio.mp3
+
+# 2. 上传获取公网 URL
 curl -s -F "files[]=@audio.mp3" https://uguu.se/upload
 # 返回: {"success":true,"files":[{"url":"https://h.uguu.se/xxx.mp3"}]}
 
-# 2. 调用火山引擎 API
+# 3. 调用火山引擎 API
 node "$SKILL_DIR/scripts/volcengine_transcribe.js" "https://h.uguu.se/xxx.mp3"
 # 输出: volcengine_result.json
 
-# 3. 生成字级别字幕
+# 4. 生成字级别字幕
 node "$SKILL_DIR/scripts/generate_subtitles.js" volcengine_result.json
 # 输出: subtitles_words.json
 ```
@@ -146,7 +159,7 @@ python3 -c "import mlx_whisper" 2>/dev/null || pip3 install mlx-whisper
 执行转录（首次运行会自动下载模型，约 1.5GB）：
 
 ```bash
-python3 "$SKILL_DIR/scripts/whisper_transcribe.py" audio.mp3
+python3 "$SKILL_DIR/scripts/whisper_transcribe.py" audio.wav
 # 直接输出: subtitles_words.json（已包含 gap 检测，无需再调 generate_subtitles.js）
 ```
 
@@ -274,6 +287,47 @@ readable.txt 格式: idx|内容|时间
 | 65-75 | 15.80-17.66 | 重复句 | "这是我剪出来的一个案例" | 删 |
 ```
 
+#### 3.6 自动清理孤立小间隙
+
+被删句子之间夹着的短 gap 也应自动标记删除，避免审核页留下碎片：
+
+```bash
+node -e "
+const words = require('../1_转录/subtitles_words.json');
+const selected = new Set(require('./auto_selected.json'));
+let added = 0;
+words.forEach((w, i) => {
+  if (!w.isGap || selected.has(i)) return;
+  let prev = i - 1;
+  while (prev >= 0 && words[prev].isGap) prev--;
+  let next = i + 1;
+  while (next < words.length && words[next].isGap) next++;
+  if (prev >= 0 && next < words.length && selected.has(prev) && selected.has(next)) {
+    selected.add(i);
+    added++;
+  }
+});
+const sorted = Array.from(selected).sort((a, b) => a - b);
+require('fs').writeFileSync('auto_selected.json', JSON.stringify(sorted, null, 2) + '\\n');
+if (added) console.log('🧹 自动清理孤立小间隙:', added, '个');
+"
+```
+
+#### 3.7 规范化预选列表（必须执行）
+
+AI 补完索引后，再执行一次规范化，补上夹在两个待删片段之间的短停顿：
+
+```bash
+node "$SKILL_DIR/scripts/refine_auto_selected.js" \
+  "../1_转录/subtitles_words.json" \
+  "auto_selected.json"
+```
+
+补充规则：
+
+- 如果一个 `<0.5s` 的停顿，前后最近的口播词都已经在 `auto_selected.json` 里，这个停顿也默认删掉
+- 长静音在 `subtitles_words.json` 里会按整段保留，不再拆成很多个 `1.0s`
+
 ### 步骤 4.5: 生成 AI 视频介绍草稿
 
 这一步必须由 Claude 直接完成，不要用本地模板脚本代写。
@@ -297,7 +351,7 @@ readable.txt 格式: idx|内容|时间
 cd ../3_审核
 
 # 6. 生成审核网页
-node "$SKILL_DIR/scripts/generate_review.js" ../1_转录/subtitles_words.json ../2_分析/auto_selected.json ../1_转录/audio.mp3
+node "$SKILL_DIR/scripts/generate_review.js" ../1_转录/subtitles_words.json ../2_分析/auto_selected.json ../1_转录/audio.wav
 # 输出: review.html
 
 # 7. 启动审核服务器
@@ -310,6 +364,11 @@ node "$SKILL_DIR/scripts/review_server.js" 8899 "$VIDEO_PATH"
 - 勾选/取消删除项
 - 直接复制 AI 生成的视频介绍草稿
 - 点击「执行剪辑」
+
+注意：
+
+- 审核页会自动生成 `audio_preview.m4a` 作为浏览器预览音频，避免直接播放大 `wav` 时的噪音问题
+- `audio_timeline.json` 会一并复制到审核目录，导出时按每个视频动态校准时间轴，不写死固定偏移
 
 ---
 
@@ -340,6 +399,9 @@ node "$SKILL_DIR/scripts/review_server.js" 8899 "$VIDEO_PATH"
 VOLCENGINE_API_KEY=xxx    # 火山引擎 API Key（方案 A 需要）
 DEFAULT_OUTPUT_DIR=xxx    # 默认输出目录
 ASR_ENGINE=               # 转录方案: volcengine / whisper，留空每次询问
+CUT_KEEP_PADDING_MS=300   # 保留片段语音边界前后缓冲
+CUT_MIN_DELETE_MS=120     # 小于该时长的删除段默认忽略
+CROSSFADE_MS=30           # 片段音频接缝淡化
 ```
 
 ### 火山引擎 API Key
