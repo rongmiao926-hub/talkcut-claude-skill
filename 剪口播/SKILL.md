@@ -45,7 +45,8 @@ pos: 转录+识别，到用户网页审核为止
     │   │   ├── auto_selected.json
     │   │   └── 口误分析.md
     │   └── 3_审核/
-    │       ├── audio_preview.m4a
+    │       ├── audio.wav
+    │       ├── audio_timeline.json
     │       ├── review.html
     │       └── 视频介绍草稿.md
     └── 字幕/
@@ -344,11 +345,17 @@ node "$SKILL_DIR/scripts/refine_auto_selected.js" \
 - 默认包含标题、正文、标签、内容摘要
 - 如果当前口播还是半成品，正文也要跟着真实，不要编造视频里没讲过的内容
 - 审核页里默认只展示和复制这份草稿，不依赖用户在页面里手工保存
+- 必须把结果实际写入 `../3_审核/视频介绍草稿.md`，不能只在对话里临时输出
+- 如果这个文件还不存在，不允许继续生成 `review.html`
+- 写完后先自行检查文件存在且非空，再继续后面的审核页步骤
 
 ### 步骤 4-5: 审核
 
 ```bash
 cd ../3_审核
+
+# 先确认视频介绍草稿已经落盘
+test -s "视频介绍草稿.md"
 
 # 6. 生成审核网页
 node "$SKILL_DIR/scripts/generate_review.js" ../1_转录/subtitles_words.json ../2_分析/auto_selected.json ../1_转录/audio.wav
@@ -365,9 +372,14 @@ node "$SKILL_DIR/scripts/review_server.js" 8899 "$VIDEO_PATH"
 - 直接复制 AI 生成的视频介绍草稿
 - 点击「执行剪辑」
 
+如果 `test -s "视频介绍草稿.md"` 失败：
+- 先回到上一步补写草稿
+- 不要跳过
+- 不要把“页面会自动尝试读取已生成的视频介绍草稿”当成已经生成
+
 注意：
 
-- 审核页会自动生成 `audio_preview.m4a` 作为浏览器预览音频，避免直接播放大 `wav` 时的噪音问题
+- 审核页会直接优先使用源视频主音轨对应的 `audio_source.wav` 试听；如果源路径失效，则继续复用当前目录已有的源音轨文件
 - `audio_timeline.json` 会一并复制到审核目录，导出时按每个视频动态校准时间轴，不写死固定偏移
 
 ---

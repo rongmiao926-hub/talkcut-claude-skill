@@ -160,8 +160,7 @@ const html = `<!DOCTYPE html>
       margin-right: 4px;
     }
     .native-audio {
-      width: 100%;
-      margin: 10px 0 0;
+      display: none;
     }
     #waveform {
       background: #fff;
@@ -464,7 +463,7 @@ const html = `<!DOCTYPE html>
       <span class="time-display" id="time">00:00 / 00:00</span>
       <button class="btn btn-cut" onclick="executeCut()">执行剪辑</button>
     </div>
-    <audio id="nativeAudio" class="native-audio" controls preload="metadata" src="${previewAudioBaseName}"></audio>
+    <audio id="nativeAudio" class="native-audio" preload="metadata" src="${previewAudioBaseName}"></audio>
     <div id="waveform"></div>
     <div class="help-section">
       <div class="help-title">操作说明</div>
@@ -516,7 +515,7 @@ const html = `<!DOCTYPE html>
     <div class="show-notes-header">
       <div>
         <div class="show-notes-title">视频介绍草稿</div>
-        <div class="show-notes-subtitle">这部分内容由 Codex 在主流程里生成，这里只负责查看和复制。</div>
+        <div class="show-notes-subtitle">这部分内容由 Claude 在主流程里生成，这里只负责查看和复制。</div>
       </div>
       <div class="show-notes-actions">
         <button class="btn btn-copy" onclick="copyShowNotes()">复制视频介绍</button>
@@ -712,8 +711,33 @@ const html = `<!DOCTYPE html>
       statsDiv.textContent = \`已选择 \${selected.size} 个，共 \${totalDuration.toFixed(2)}s\`;
     }
 
+    function getJumpSkipTarget(timelineTime) {
+      const segments = getMergedSelectedSegments();
+      for (const seg of segments) {
+        if (timelineTime >= seg.start && timelineTime < seg.end) {
+          return seg.end;
+        }
+      }
+      return null;
+    }
+
+    function skipSelectedDuringPreview() {
+      const currentPreviewTime = nativeAudio.currentTime || 0;
+      const timelineTime = previewToTimelineTime(currentPreviewTime);
+      const skipTarget = getJumpSkipTarget(timelineTime);
+      if (skipTarget === null) return false;
+
+      const epsilon = 0.01;
+      const nextPreviewTime = timelineToPreviewTime(skipTarget + epsilon);
+      if (!(nextPreviewTime > currentPreviewTime + 0.002)) return false;
+
+      nativeAudio.currentTime = nextPreviewTime;
+      return true;
+    }
+
     // ── 播放跟踪 ──
     wavesurfer.on('timeupdate', (rawTime) => {
+      if (skipSelectedDuringPreview()) return;
       const t = previewToTimelineTime(rawTime);
       const allowAutoScroll = wavesurfer.isPlaying() && Date.now() >= suppressAutoScrollUntil;
       timeDisplay.textContent = \`\${formatTime(t)} / \${formatTime(previewToTimelineTime(wavesurfer.getDuration()))}\`;
@@ -884,6 +908,10 @@ const html = `<!DOCTYPE html>
       if (e.code === 'Space') { e.preventDefault(); wavesurfer.playPause(); }
       else if (e.code === 'ArrowLeft') { wavesurfer.setTime(Math.max(0, wavesurfer.getCurrentTime() - (e.shiftKey ? 5 : 1))); }
       else if (e.code === 'ArrowRight') { wavesurfer.setTime(wavesurfer.getCurrentTime() + (e.shiftKey ? 5 : 1)); }
+    });
+
+    nativeAudio.addEventListener('play', () => {
+      skipSelectedDuringPreview();
     });
 
     render();

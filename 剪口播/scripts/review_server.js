@@ -198,7 +198,7 @@ const server = http.createServer((req, res) => {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           success: false,
-          error: '当前目录还没有 AI 生成的视频介绍草稿，请先在 Codex 主流程里生成。',
+          error: '当前目录还没有 AI 生成的视频介绍草稿，请先在 Claude 主流程里生成。',
         }));
         return;
       }
