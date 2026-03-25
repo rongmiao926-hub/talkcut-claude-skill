@@ -39,16 +39,20 @@ if (fs.existsSync(timelineMetadataSource)) {
     const sourceAudioStartSec = Number(timelineMetadata.sourceAudioStartSec);
     const previewSourceName = 'audio_source.wav';
 
-    if (sourceVideo && Number.isFinite(sourceAudioStartSec) && fs.existsSync(sourceVideo)) {
-      const previewIsFresh = fs.existsSync(previewSourceName)
-        && fs.statSync(previewSourceName).mtimeMs >= fs.statSync(sourceVideo).mtimeMs;
+    if (Number.isFinite(sourceAudioStartSec)) {
+      if (sourceVideo && fs.existsSync(sourceVideo)) {
+        const previewIsFresh = fs.existsSync(previewSourceName)
+          && fs.statSync(previewSourceName).mtimeMs >= fs.statSync(sourceVideo).mtimeMs;
 
-      if (!previewIsFresh) {
-        execSync(
-          `ffmpeg -y -i "${sourceVideo}" -map 0:a:0 -c:a pcm_s16le "${previewSourceName}"`,
-          { stdio: 'pipe' }
-        );
-        console.log('🎧 已生成源音轨预览音频:', previewSourceName);
+        if (!previewIsFresh) {
+          execSync(
+            `ffmpeg -y -i "${sourceVideo}" -map 0:a:0 -c:a pcm_s16le "${previewSourceName}"`,
+            { stdio: 'pipe' }
+          );
+          console.log('🎧 已生成源音轨预览音频:', previewSourceName);
+        }
+      } else if (fs.existsSync(previewSourceName)) {
+        console.log('🎧 源视频路径已变化，继续复用当前目录里的源音轨预览音频:', previewSourceName);
       }
 
       if (fs.existsSync(previewSourceName)) {
